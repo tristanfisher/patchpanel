@@ -1,6 +1,13 @@
 # patchpanel
 
 
+[![Go
+Reference](https://pkg.go.dev/badge/github.com/tristanfisher/patchpanel.svg)](https://pkg.go.dev/github.com/tristanfisher/patchpanel)
+[![Go Report
+Card](https://goreportcard.com/badge/github.com/tristanfisher/patchpanel)](https://goreportcard.com/report/github.com/tristanfisher/patchpanel)
+[![CI Build Status](https://github.com/tristanfisher/patchpanel/actions/workflows/ci.yaml/badge.svg)](https://github.com/tristanfisher/patchpanel/actions/workflows/ci.yaml)
+
+
 `patchpanel` provides a thread-safe utility for coercing configuration values into strongly typed values on a struct,
 which is especially useful for loading up configuration data or complex arguments for a function.
 
