@@ -54,13 +54,15 @@ var timeFormatMap = map[string]string{
 	"TimeOnly":    time.TimeOnly,
 }
 
+// Parser handles parsing a string input based on an arbitrary function body.  parserHints are provided at call time
+// for interpretation within a given function (see time.Time's parser in NewPatchPanel for an example implementation)
 type Parser func(value string, parserHints map[string]any) (any, error)
 
 type PatchPanel struct {
 	tokenSeparator    string
 	keyValueSeparator string
 	parsers           map[reflect.Type]Parser
-	sync.Mutex
+	sync.RWMutex
 }
 
 // NewPatchPanel instantiates a PatchPanel
@@ -127,7 +129,6 @@ func NewPatchPanel(tokenSeparator string, keyValueSeparator string) *PatchPanel 
 				return val, nil
 			},
 		},
-		Mutex: sync.Mutex{},
 	}
 	return pc
 }
@@ -159,7 +160,7 @@ func parseHints(sF reflect.StructField, hints []string) map[string]any {
 
 	// if we have parser hints, cleanup and split into a map
 	// parser hints likely originate from a tag
-	parserHintTable := make(map[string]any)
+	parserHintTable := make(map[string]any, len(hints))
 
 	for _, hintTag := range hints {
 		tagValue := sF.Tag.Get(hintTag)
@@ -174,10 +175,10 @@ func parseHints(sF reflect.StructField, hints []string) map[string]any {
 // We expect our input value, v, to be a string as we expect to be handling struct tags
 // parserHints are optional and come in as a string from a tag name
 func (pc *PatchPanel) coerce(v string, toType reflect.Type, parserHints map[string]any) (any, error) {
-	pc.Lock()
-	defer pc.Unlock()
-
+	pc.RLock()
 	parserFunc, ok := pc.parsers[toType]
+	pc.RUnlock()
+
 	if !ok {
 		return nil, UnhandledParserTypeError{Msg: fmt.Sprintf("unknown type for parser: %v", reflect.TypeOf(v))}
 	}
