@@ -1,18 +1,138 @@
 # patchpanel
 
 
-`patchpanel` aims to make it easy to load up a struct with data at runtime, such as loading up configuration data. 
+`patchpanel` provides a thread-safe utility for coercing configuration values into strongly typed values on a struct,
+which is especially useful for loading up configuration data or complex arguments for a function.
 
-no external dependencies are used.
+No external dependencies are used, but `patchpanel` is built to easily integrate with other libraries.
 
-### functionality
+<!-- TOC -->
+* [patchpanel](#patchpanel)
+    * [Metadata / struct tags](#metadata--struct-tags)
+    * [Custom parsers](#custom-parsers)
+    * [Functionality](#functionality)
+    * [Examples](#examples)
+      * [Simple usage:](#simple-usage)
+      * [Usage of the `GetDefault()` convenience function:](#usage-of-the-getdefault-convenience-function)
+      * [Adding a custom parser and using a default value:](#adding-a-custom-parser-and-using-a-default-value)
+      * [Integrating spf13/viper with patchpanel:](#integrating-spf13viper-with-patchpanel)
+<!-- TOC -->
 
-- getting values via [struct tags](https://go.dev/ref/spec#Tag)
-- type coercions / deserializers
 
-### example usage
+### Metadata / struct tags
 
-example using viper in conjunction with patchpanel to load configuration onto a struct
+Support for evaluating metadata (such as default values or specific configuration tags) is built-in for converting
+string representations to corresponding native types, performed automatically to the type of the struct field 
+to which they are attached (e.g., string, int, bool, time.Duration, time.Time).
+
+Secondary struct tags are also supported for influencing how the primary tag is parsed. For example, a timeFormat tag 
+dictates how a default tag representing a timestamp should be interpreted.
+
+### Custom parsers
+
+Consumers can register user-defined types and parsing logic at runtime.
+
+See: `type Parser func(value string, parserHints map[string]any) (any, error)`
+
+and
+
+```
+func (pc *PatchPanel) AddParser(typ reflect.Type, parser Parser) {
+	pc.Lock()
+	defer pc.Unlock()
+	pc.parsers[typ] = parser
+}
+```
+
+when parsing a type, `patchpanel` will call the registered parser (if available) along with any parser hints that are provided.
+
+
+### Functionality
+
+- Getting values via [struct tags](https://go.dev/ref/spec#Tag)
+- Type coercions / deserializers
+
+### Examples
+
+#### Simple usage:
+
+```go
+type ServerConfig struct {
+    Port int `env:"PORT" default:"8080"`
+    TLS  bool `default:"true"`
+}
+
+func main() {
+    panel := patchpanel.NewPatchPanel(patchpanel.TokenSeparator, patchpanel.KeyValueSeparator)
+    cfgType := patchpanel.ToReflectType(ServerConfig{})
+
+    // extract the "default" tag from the "Port" field
+    _, val, err := panel.GetFieldTag("Port", "default", cfgType, nil)
+    if err != nil {
+        panic(err)
+    }
+
+    // the Port val is now strongly typed as int(8080)
+    fmt.Printf("Type: %T, Value: %v\n", val, val)
+}
+```
+
+#### Usage of the `GetDefault()` convenience function:
+
+```go
+type RateLimit struct {
+    MaxRequests int `default:"100"`
+}
+
+func main() {
+    panel := patchpanel.NewPatchPanel("·", ":")
+    rlType := patchpanel.ToReflectType(RateLimit{})
+
+    val, err := panel.GetDefault("MaxRequests", rlType, nil)
+    if err != nil {
+        // Handle specific errors such as missing values
+        if errors.As(err, &patchpanel.NoValueError{}) {
+            fmt.Println("No default value provided.")
+        }
+    }
+}
+```
+
+#### Adding a custom parser and using a default value:
+
+```go
+type IPv4Address string
+
+func main() {
+    panel := patchpanel.NewPatchPanel(patchpanel.TokenSeparator, patchpanel.KeyValueSeparator)
+
+    // Define the parser for the custom type IPv4Address
+    ipv4Parser := func(v string, hints map[string]any) (any, error) {
+        parts := strings.Split(v, ".")
+        if len(parts) != 4 {
+            return nil, errors.New("invalid ipv4 format")
+        }
+        return IPv4Address(v), nil
+    }
+
+    // Register the parser against the reflect.Type of IPv4Address
+    panel.AddParser(patchpanel.ToReflectType(IPv4Address("")), ipv4Parser)
+
+    type NetworkConfig struct {
+        BindIP IPv4Address `default:"127.0.0.1"`
+    }
+
+    cfgType := patchpanel.ToReflectType(NetworkConfig{})
+    val, err := panel.GetDefault("BindIP", cfgType, nil)
+    if err != nil {
+        panic(err)
+    }
+
+    // val is now strongly typed as IPv4Address("127.0.0.1")
+}
+```
+
+#### Integrating spf13/viper with patchpanel:
 
 ```go
 package main
