@@ -58,10 +58,16 @@ var timeFormatMap = map[string]string{
 // for interpretation within a given function (see time.Time's parser in NewPatchPanel for an example implementation)
 type Parser func(value string, parserHints map[string]any) (any, error)
 
+// KindParser is like Parser but also receives the target reflect.Type, enabling it to handle
+// all types matching a given reflect.Kind (e.g. all struct types).  This is necessary because
+// a single KindParser must be able to construct a zero value of any type of that kind.
+type KindParser func(value string, toType reflect.Type, parserHints map[string]any) (any, error)
+
 type PatchPanel struct {
 	tokenSeparator    string
 	keyValueSeparator string
 	parsers           map[reflect.Type]Parser
+	kindParsers       map[reflect.Kind]KindParser
 	sync.RWMutex
 }
 
@@ -129,6 +135,20 @@ func NewPatchPanel(tokenSeparator string, keyValueSeparator string) *PatchPanel 
 				return val, nil
 			},
 		},
+		// kindParsers are a fallback for when no exact reflect.Type parser is registered.
+		// Type-specific parsers in parsers always take precedence.
+		kindParsers: map[reflect.Kind]KindParser{
+			// Struct fields with no registered type parser are handled by returning a zero
+			// value of the target type when a non-empty string is provided, or NoValueError
+			// when the tag value is empty (no default set).  Override via AddKindParser to
+			// support custom serialisation formats (e.g. JSON) for embedded struct defaults.
+			reflect.Struct: func(value string, toType reflect.Type, parserHints map[string]any) (any, error) {
+				if value == "" {
+					return nil, NoValueError{Msg: toType.Name()}
+				}
+				return reflect.New(toType).Elem().Interface(), nil
+			},
+		},
 	}
 	return pc
 }
@@ -138,6 +158,14 @@ func (pc *PatchPanel) AddParser(typ reflect.Type, parser Parser) {
 	pc.Lock()
 	defer pc.Unlock()
 	pc.parsers[typ] = parser
+}
+
+// AddKindParser adds a KindParser that is used as a fallback for all types matching the given
+// reflect.Kind when no exact reflect.Type parser is registered.  The ability to overwrite is intentional.
+func (pc *PatchPanel) AddKindParser(kind reflect.Kind, parser KindParser) {
+	pc.Lock()
+	defer pc.Unlock()
+	pc.kindParsers[kind] = parser
 }
 
 // ToReflectType is a shallow wrapper around reflect.TypeOf, placed in this library for reasons of code-flow
@@ -176,20 +204,27 @@ func parseHints(sF reflect.StructField, hints []string) map[string]any {
 // parserHints are optional and come in as a string from a tag name
 func (pc *PatchPanel) coerce(v string, toType reflect.Type, parserHints map[string]any) (any, error) {
 	pc.RLock()
-	parserFunc, ok := pc.parsers[toType]
+	parserFunc, typeOk := pc.parsers[toType]
+	kindParserFunc, kindOk := pc.kindParsers[toType.Kind()]
 	pc.RUnlock()
 
-	if !ok {
-		return nil, UnhandledParserTypeError{Msg: fmt.Sprintf("unknown type for parser: %v", reflect.TypeOf(v))}
+	if typeOk {
+		val, err := parserFunc(v, parserHints)
+		if err != nil {
+			return val, err
+		}
+		return val, nil
 	}
 
-	val, err := parserFunc(v, parserHints)
-	if err != nil {
-		// return whatever type parserFunc uses
-		return val, err
+	if kindOk {
+		val, err := kindParserFunc(v, toType, parserHints)
+		if err != nil {
+			return val, err
+		}
+		return val, nil
 	}
 
-	return val, nil
+	return nil, UnhandledParserTypeError{Msg: fmt.Sprintf("unknown type for parser: %v", toType)}
 }
 
 // GetFieldTag loads a tag off of a given field in a struct.
