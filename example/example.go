@@ -11,12 +11,14 @@ import (
 )
 
 type DatabaseConfig struct {
-	Host     string `default:"localhost"`
-	Port     int    `default:"5432"`
-	Name     string `default:"myDatabase"`
-	User     string `default:"myUser"`
-	Password string `default:"myPassword"`
-	SSLMode  string `default:"disable"`
+	Host       string `default:"localhost"`
+	Port       int    `default:"5432"`
+	Name       string `default:"myDatabase"`
+	User       string `default:"myUser"`
+	Password   string `default:"myPassword"`
+	SSLMode    string `default:"disable"`
+	UnusedInt  int
+	UnusedBool bool
 }
 
 type Config struct {
