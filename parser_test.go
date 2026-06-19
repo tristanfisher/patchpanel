@@ -15,7 +15,7 @@ type NestedConfig struct {
 }
 
 type TestStructWithNested struct {
-	Name   string       `default:"service"`
+	Name   string `default:"service"`
 	Config NestedConfig
 }
 
@@ -315,7 +315,9 @@ func Test_getFieldTag(t *testing.T) {
 			args: args{
 				fieldName: "Config",
 				tagName:   "default",
-				t:         ToReflectType(struct{ Config NestedConfig `default:"something"` }{}),
+				t: ToReflectType(struct {
+					Config NestedConfig `default:"something"`
+				}{}),
 			},
 			want: reflect.StructField{
 				Name: "Config",

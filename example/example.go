@@ -11,19 +11,23 @@ import (
 )
 
 type DatabaseConfig struct {
-	Host     string `default:"localhost"`
-	Port     int    `default:"5432"`
-	Name     string `default:"myDatabase"`
-	User     string `default:"myUser"`
-	Password string `default:"myPassword"`
-	SSLMode  string `default:"disable"`
+	Host       string `default:"localhost"`
+	Port       int    `default:"5432"`
+	Name       string `default:"myDatabase"`
+	User       string `default:"myUser"`
+	Password   string `default:"myPassword"`
+	SSLMode    string `default:"disable"`
+	UnusedInt  int
+	UnusedBool bool
 }
 
 type Config struct {
-	Runtime    time.Duration `default:"5s"`
-	StringTest string        `default:"hi"`
-	IntValue   int           `default:"42"`
-	DBConfig   DatabaseConfig
+	Runtime     time.Duration `default:"5s"`
+	StringTest  string        `default:"hi"`
+	IntValue    int           `default:"42"`
+	DBConfig    DatabaseConfig
+	LuckyNumber int
+	IsItSunny   bool
 }
 
 // populateDefaults recursively loads `default` struct tags into the struct pointed to by structPtr.
@@ -40,9 +44,11 @@ func populateDefaults(patch *patchpanel.PatchPanel, structPtr reflect.Value) err
 		val, err := patch.GetDefault(field.Name, t, []string{})
 		if err != nil {
 			var noVal patchpanel.NoValueError
-			if errors.As(err, &noVal) && field.Type.Kind() == reflect.Struct {
-				if err := populateDefaults(patch, fieldVal.Addr()); err != nil {
-					return err
+			if errors.As(err, &noVal) {
+				if field.Type.Kind() == reflect.Struct {
+					if err := populateDefaults(patch, fieldVal.Addr()); err != nil {
+						return err
+					}
 				}
 				continue
 			}

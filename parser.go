@@ -89,16 +89,25 @@ func NewPatchPanel(tokenSeparator string, keyValueSeparator string) *PatchPanel 
 
 			// bool
 			reflect.TypeOf(true): func(v string, parserHints map[string]any) (any, error) {
+				if v == "" {
+					return nil, NoValueError{Msg: "bool"}
+				}
 				return strconv.ParseBool(v)
 			},
 
 			// int
 			reflect.TypeOf(0): func(v string, parserHints map[string]any) (any, error) {
+				if v == "" {
+					return nil, NoValueError{Msg: "int"}
+				}
 				return strconv.Atoi(v)
 			},
 
 			// time.Duration
 			reflect.TypeOf(time.Duration(0)): func(v string, parserHints map[string]any) (any, error) {
+				if v == "" {
+					return nil, NoValueError{Msg: "time.Duration"}
+				}
 				val, err := time.ParseDuration(v)
 				if err != nil {
 					return time.Duration(0), err
@@ -108,6 +117,9 @@ func NewPatchPanel(tokenSeparator string, keyValueSeparator string) *PatchPanel 
 
 			// time.Time
 			reflect.TypeOf(time.Time{}): func(v string, parserHints map[string]any) (any, error) {
+				if v == "" {
+					return nil, NoValueError{Msg: "time.Time"}
+				}
 				// timeFormatString is required as the go compiler
 				// cannot infer that timeFormat will invariably become a string
 				var timeFormatString string
