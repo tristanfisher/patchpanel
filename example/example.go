@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -25,28 +26,53 @@ type Config struct {
 	DBConfig   DatabaseConfig
 }
 
+// populateDefaults recursively loads `default` struct tags into the struct pointed to by structPtr.
+// When a field's type is itself a struct with no registered type parser, the struct KindParser
+// returns NoValueError; populateDefaults treats this as a signal to recurse into that field.
+func populateDefaults(patch *patchpanel.PatchPanel, structPtr reflect.Value) error {
+	v := structPtr.Elem()
+	t := v.Type()
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		fieldVal := v.Field(i)
+
+		val, err := patch.GetDefault(field.Name, t, []string{})
+		if err != nil {
+			var noVal patchpanel.NoValueError
+			if errors.As(err, &noVal) && field.Type.Kind() == reflect.Struct {
+				if err := populateDefaults(patch, fieldVal.Addr()); err != nil {
+					return err
+				}
+				continue
+			}
+			return err
+		}
+
+		fieldVal.Set(reflect.ValueOf(val))
+		fmt.Println(field.Name, " => ", val)
+	}
+	return nil
+}
+
 func ParseConfig(configPath string, configStruct Config) (*Config, error) {
 	patch := patchpanel.NewPatchPanel(patchpanel.TokenSeparator, patchpanel.KeyValueSeparator)
 
-	// get defaults off of our struct using patchpanel
-	confType := reflect.TypeOf(configStruct)
-	for i := 0; i < confType.NumField(); i++ {
-		fieldVal, err := patch.GetDefault(confType.Field(i).Name, confType, []string{})
-		if err != nil {
-			return &Config{}, err
-		}
-		fmt.Println(confType.Field(i).Name, " => ", fieldVal)
+	if err := populateDefaults(patch, reflect.ValueOf(&configStruct)); err != nil {
+		return &Config{}, err
 	}
 	return &configStruct, nil
 }
 
 func main() {
-	// grab a values/configuration file path from our environment using patchpanel
 	valuesFile := patchpanel.GetFileEnvOrPath(patchpanel.ENV_CONFIG_FILE, patchpanel.FLAG_CONFIG_FILE)
 	conf, err := ParseConfig(valuesFile, Config{})
 	if err != nil {
 		_, _ = os.Stderr.WriteString(fmt.Sprintf("error parsing configuration: %s\n", err.Error()))
 		os.Exit(1)
 	}
-	fmt.Println(conf)
+	fmt.Printf("%+v\n", *conf)
+
+	cfgType := patchpanel.ToReflectType(conf)
+	fmt.Println("Config type: ", cfgType)
 }
